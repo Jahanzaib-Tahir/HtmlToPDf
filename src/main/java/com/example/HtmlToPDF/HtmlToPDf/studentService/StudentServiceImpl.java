@@ -1,23 +1,28 @@
 package com.example.HtmlToPDF.HtmlToPDf.studentService;
-
-
-import com.example.HtmlToPDF.HtmlToPDf.studentDao.Student;
 import com.example.HtmlToPDF.HtmlToPDf.studentRepo.StudentRepo;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.core.io.ByteArrayResource;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
+import com.itextpdf.text.DocumentException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.thymeleaf.context.Context;
+import org.w3c.tidy.Tidy;
+import org.xhtmlrenderer.pdf.ITextRenderer;
+import org.thymeleaf.spring4.SpringTemplateEngine;
+import com.example.HtmlToPDF.HtmlToPDf.studentDao.Student;
+import org.springframework.beans.factory.annotation.Autowired;
 import javax.persistence.EntityNotFoundException;
+import java.io.*;
+import java.net.MalformedURLException;
+import java.nio.file.FileSystems;
 import java.util.List;
 
 @Service
 public class StudentServiceImpl implements StudentService{
 
+    @Autowired
+    SpringTemplateEngine templateEngine;
 
-    private static  StudentRepo studentRepo;
+    private static StudentRepo studentRepo;
 
     @Autowired
     public StudentServiceImpl(StudentRepo studentRepo) {
@@ -46,22 +51,46 @@ public class StudentServiceImpl implements StudentService{
     }
 
     @Override
-    public ResponseEntity<?> generatePatientCardPdf( int id, String userName) {
-/*        Student student =studentRepo.findById(id).orElseThrow(() -> new EntityNotFoundException("was not found for mr-number " + id));
-       // ByteArrayResource contents=new ByteArrayResource(PDFGenerator.generatePatientCard(student));
+    public  List<Student> generatePatientCardPdf() throws IOException, DocumentException {
+        Context context = new Context();
 
+        List<Student> students = studentRepo.findAll();
 
-        //update patient card record
+        context.setVariable("students",students);
+/*
+        context.setVariable("gpa",student.getcGpa());
+        context.setVariable("id",student.getId());
+*/
+        String htmlContentToRender = templateEngine.process("Mango", context);
+        String xHtml = xhtmlConvert(htmlContentToRender);
 
-        HttpHeaders headers = new HttpHeaders();
-        *//*headers.setContentType(MediaType.parseMediaType("application/pdf"));*//*
-        headers.add("Content-Disposition", "inline; filename=patientCard.pdf");
-        return ResponseEntity.ok()
-                .contentType(MediaType.parseMediaType("application/pdf"))
-                .contentLength(contents.getByteArray().length)
-                .headers(headers)
-                .body(contents);*/
-  return null;
+        ITextRenderer renderer = new ITextRenderer();
+
+        String baseUrl = FileSystems
+                .getDefault()
+                .getPath("src", "main", "resources","templates")
+                .toUri()
+                .toURL()
+                .toString();
+        renderer.setDocumentFromString(xHtml, baseUrl);
+        renderer.layout();
+
+        OutputStream outputStream = new FileOutputStream("src//test.pdf");
+        renderer.createPDF(outputStream);
+        outputStream.close();
+
+        return  students;
+    }
+
+    private String xhtmlConvert(String html) throws UnsupportedEncodingException {
+        Tidy tidy = new Tidy();
+        tidy.setInputEncoding("UTF-8");
+        tidy.setOutputEncoding("UTF-8");
+        tidy.setXHTML(true);
+        ByteArrayInputStream inputStream = new ByteArrayInputStream(html.getBytes("UTF-8"));
+        ByteArrayOutputStream outputStream = new ByteArrayOutputStream();
+        tidy.parseDOM(inputStream, outputStream);
+        return outputStream.toString("UTF-8");
     }
 
 
